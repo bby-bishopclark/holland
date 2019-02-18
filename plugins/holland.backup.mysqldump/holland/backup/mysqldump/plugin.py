@@ -490,7 +490,7 @@ def exclude_invalid_views(schema, client, definitions_file):
                             "Unexpected error when checking invalid " "view %s.%s: [%d] %s",
                             schema_db.name,
                             table.name,
-                            *exc.args,
+                            *exc.args
                         )
                         raise BackupError("[%d] %s" % exc.args)
                 if invalid_view:

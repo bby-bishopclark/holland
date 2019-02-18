@@ -287,8 +287,8 @@ def open_stream(
     inline=True,
     extra_args=None,
     checksum=False,
-    options=None,
     split=False,
+    **kwargs,
 ):
     """
     Opens a compressed data stream, and returns a file descriptor type object
