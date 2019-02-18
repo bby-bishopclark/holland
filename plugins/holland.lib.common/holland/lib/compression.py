@@ -288,7 +288,7 @@ def open_stream(
     extra_args=None,
     checksum=False,
     split=False,
-    **kwargs
+    **kwargs  # pylint: disable=unused-variable
 ):
     """
     Opens a compressed data stream, and returns a file descriptor type object
