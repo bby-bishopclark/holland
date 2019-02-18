@@ -147,7 +147,9 @@ class CompressionOutput(object):
                 self.pid = subprocess.Popen(
                     argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=self.stderr
                 )
-                self.split = subprocess.Popen(split_args, stdin=self.pid.stdout, stderr=self.stderr)
+                self.split_filehandle = subprocess.Popen(
+                    split_args, stdin=self.pid.stdout, stderr=self.stderr
+                )
 
             else:
                 self.fileobj = io.open(path, "w")
@@ -288,7 +290,7 @@ def open_stream(
     extra_args=None,
     checksum=False,
     split=False,
-    **kwargs  # pylint: disable=unused-variable
+    **kwargs  # pylint: disable=unused-argument
 ):
     """
     Opens a compressed data stream, and returns a file descriptor type object
