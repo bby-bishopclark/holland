@@ -8,6 +8,7 @@ import errno
 import subprocess
 import shlex
 import io
+import hashlib
 from tempfile import TemporaryFile
 from holland.lib.which import which
 
@@ -35,6 +36,7 @@ options = string(default="")
 inline = boolean(default=yes)
 split = boolean(default=no)
 level  = integer(min=0, max=9, default=1)
+checksum = boolean(default=no)
 """
 
 
@@ -117,14 +119,19 @@ class CompressionOutput(object):
     a standard file descriptor such as from open().
     """
 
-    def __init__(self, path, mode, argv, level, inline, split=False):
+    def __init__(self, path, mode, argv, level, inline, split=False, checksum=False):
         self.argv = argv
         self.level = level
         self.inline = inline
+        self.split = split
+        self.checksum = checksum
         if not inline:
             if split:
                 LOG.warning("The split option only works if inline is enabled")
-            self.fileobj = io.open(os.path.splitext(path)[0], mode)
+            if level == 0:
+                self.fileobj = io.open(path, mode)
+            else:
+                self.fileobj = io.open(os.path.splitext(path)[0], mode)
             self.filehandle = self.fileobj.fileno()
         else:
             if level:
@@ -169,7 +176,9 @@ class CompressionOutput(object):
         Close filehandle
         """
         self.closed = True
-        if not self.inline:
+        if not self.split:
+            file_name = str(self.fileobj.name)
+        if not self.inline and not self.level == 0:
             argv = list(self.argv)
             if self.level:
                 if "gpg" in argv[0]:
@@ -190,7 +199,9 @@ class CompressionOutput(object):
             pid = subprocess.Popen(argv, stdin=self.fileobj.fileno(), stdout=cmp_f.fileno())
             status = pid.wait()
             os.unlink(self.fileobj.name)
-        else:
+            _, ext = lookup_compression(os.path.basename(argv[0]))
+            file_name = file_name + str(ext)
+        elif not self.level == 0:
             self.pid.stdin.close()
             status = self.pid.wait()
             stderr = self.stderr
@@ -213,6 +224,26 @@ class CompressionOutput(object):
                         LOG.info("%s: %s", self.argv[0], line.rstrip())
             finally:
                 stderr.close()
+        if self.checksum:
+            if not self.split:
+                try:
+                    hasher = hashlib.md5()
+                    with open(file_name, "rb") as line:
+                        buf = line.read(65536)
+                        while buf:
+                            hasher.update(buf)
+                            buf = line.read(65536)
+                    LOG.debug("Hash: %s %s", hasher.hexdigest(), file_name)
+                    try:
+                        hash_file = open(file_name + ".md5", "w")
+                        hash_file.write(hasher.hexdigest() + "\n")
+                        hash_file.close()
+                    except IOError:
+                        LOG.warning("Failed to create hash file for %s", file_name)
+                except IOError:
+                    LOG.warning("Failed to create hash of %s", file_name)
+            else:
+                LOG.warning("Checksum is not supported with 'split' option")
 
 
 def stream_info(path, method=None, level=None):
@@ -227,8 +258,8 @@ def stream_info(path, method=None, level=None):
     method  -- Compression method (i.e. 'gzip', 'bzip2', 'pbzip2', 'lzop')
     level   -- Compression level (0-9)
     """
-    if not method or level == 0:
-        return path
+    if not method or level == 0 or method == "none":
+        return None, path
 
     argv, ext = lookup_compression(method)
 
@@ -248,7 +279,17 @@ def _parse_args(value):
     return shlex.split(value)
 
 
-def open_stream(path, mode, method=None, level=None, inline=True, extra_args=None, split=False):
+def open_stream(
+    path,
+    mode,
+    method=None,
+    level=None,
+    inline=True,
+    extra_args=None,
+    checksum=False,
+    options=None,
+    split=False,
+):
     """
     Opens a compressed data stream, and returns a file descriptor type object
     that acts much like os.open() does.  If no method is passed, or the
@@ -261,14 +302,17 @@ def open_stream(path, mode, method=None, level=None, inline=True, extra_args=Non
     level   -- Compression level
     inline  -- Boolean whether to compress inline, or after the file is written.
     """
-    if not method or method == "none" or level == 0:
-        return io.open(path, mode)
 
-    argv, path = stream_info(path, method)
-    if extra_args:
+    if not method or method == "none" or level == 0:
+        inline = False
+        level = 0
+    argv, path = stream_info(path, method, level)
+    if argv and extra_args:
         argv += _parse_args(extra_args)
-    if mode == "r":
+    if mode in ["r", "rb"]:
         return CompressionInput(path, mode, argv=argv)
-    if mode == "w":
-        return CompressionOutput(path, mode, argv=argv, level=level, inline=inline, split=split)
+    if mode in ["w", "wb"]:
+        return CompressionOutput(
+            path, mode, argv=argv, level=level, inline=inline, split=split, checksum=checksum
+        )
     raise IOError("invalid mode: %s" % mode)
