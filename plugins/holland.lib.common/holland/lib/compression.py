@@ -237,8 +237,11 @@ class CompressionOutput(object):
                             buf = line.read(65536)
                     LOG.debug("Hash: %s %s", hasher.hexdigest(), file_name)
                     try:
-                        hash_file = open(file_name + ".md5", "w")
-                        hash_file.write(hasher.hexdigest() + "\n")
+                        checksum_path = os.path.join(os.path.split(file_name)[0], "CHECKSUM")
+                        hash_file = open(checksum_path, "a")
+                        hash_file.write(
+                            hasher.hexdigest() + " %s" % os.path.basename(file_name) + "\n"
+                        )
                         hash_file.close()
                     except IOError:
                         LOG.warning("Failed to create hash file for %s", file_name)
