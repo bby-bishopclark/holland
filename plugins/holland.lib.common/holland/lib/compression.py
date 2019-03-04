@@ -202,7 +202,7 @@ class CompressionOutput(object):
             status = pid.wait()
             os.unlink(self.fileobj.name)
             _, ext = lookup_compression(os.path.basename(argv[0]))
-            file_name = file_name + str(ext)
+            file_name = self.fileobj.name + str(ext)
         elif not self.level == 0:
             self.pid.stdin.close()
             status = self.pid.wait()
